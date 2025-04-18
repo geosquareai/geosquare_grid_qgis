@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/geosquare_grid" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>

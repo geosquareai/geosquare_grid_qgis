@@ -1,0 +1,47 @@
+# This file contains metadata for your plugin.
+
+# This file should be included when you package your plugin.# Mandatory items:
+
+[general]
+name=Geosquare Grid
+qgisMinimumVersion=3.0
+description=Geosquare Grid
+version=0.1
+author=PT Geo Inovasi Nusantara
+email=admin@geosquare.ai
+
+about=PetainGrid is a geographic indexing and addressing system that divides the world into hierarchical grid cells. The tool provides: Hierarchical Grid System: Divides the Earth into 15 precision levels of grid cells Custom Addressing: Converts geographic coordinates into unique Grid IDs (GIDs) Human-Readable Addresses: Maps technical grid cells to natural language addresses using a grammar-based structure Bidirectional Conversion: Translates between coordinates, grid IDs, and human addresses Spatial Analysis: Includes tools for: Finding grid cells that overlap with any geometry Creating grid networks within bounding boxes Calculating geometric relationships between cells PetainGrid enables precise location referencing without using traditional coordinate systems, making geographic positions more accessible through structured, human-readable addresses while maintaining technical precision.
+
+tracker=http://bugs
+repository=http://repo
+# End of mandatory metadata
+
+# Recommended items:
+
+hasProcessingProvider=yes
+# Uncomment the following line and add your changelog:
+# changelog=
+
+# Tags are comma separated with spaces allowed
+tags=python
+
+homepage=http://homepage
+category=Vector
+icon=icon.png
+# experimental flag
+experimental=True
+
+# deprecated flag (applies to the whole plugin, not just a single version)
+deprecated=False
+
+# Since QGIS 3.8, a comma separated list of plugins to be installed
+# (or upgraded) can be specified.
+# Check the documentation for more information.
+# plugin_dependencies=
+
+Category of the plugin: Raster, Vector, Database or Web
+# category=
+
+# If the plugin can run on QGIS Server.
+server=False
+
