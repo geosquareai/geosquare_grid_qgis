@@ -48,7 +48,7 @@ from qgis.core import (QgsProcessing,
                        QgsProcessingParameterBoolean,
                        QgsProcessingParameterEnum)
 from .geosquare_grid import GeosquareGrid
-from qgis.core import QgsField, QgsFields, QgsCoordinateReferenceSystem, QgsWkbTypes, QgsFeatureSink
+from qgis.core import QgsField, QgsFields, QgsCoordinateReferenceSystem, QgsWkbTypes, QgsCoordinateTransform
 from PyQt5.QtCore import QVariant
 from qgis import processing
 from qgis.core import QgsGeometry, QgsFeature, QgsVectorLayer
@@ -88,8 +88,8 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterFeatureSource(
             self.INPUT,
-            self.tr('Input layer (must use CRS84 or EPSG:4326 or WGS84 or other geographic CRS)'),
-            [QgsProcessing.TypeVectorPoint, QgsProcessing.TypeVectorLine, QgsProcessing.TypeVectorPolygon]
+            self.tr('Input layer'),
+            [QgsProcessing.TypeVectorPolygon]
             )
         )
 
@@ -99,7 +99,7 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT,
-                self.tr('Output layer')
+                self.tr('Geosquare Grid')
             )
         )
 
@@ -108,8 +108,8 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterBoolean(
                 self.INSIDEONLY,
-                self.tr('Only inside the polygon'),
-                defaultValue=False,
+                self.tr('Full cover area'),
+                defaultValue=True,
                 optional=True
             )
         )
@@ -140,26 +140,24 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         (sink, dest_id) = self.parameterAsSink(parameters, self.OUTPUT,
             context, fields, QgsWkbTypes.Polygon, crs)
         
-        # convert to WGS84 if not already
-        if source.sourceCrs() != crs:
-            source = processing.run(
-                'qgis:reprojectlayer',
-                {
-                    'INPUT': source,
-                    'TARGET_CRS': crs,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                },
-                context=context,
-                feedback=feedback
-            )['OUTPUT']
         # Check if the input layer is empty
         if source.featureCount() == 0:
             feedback.pushInfo(self.tr('Input layer is empty.'))
             return {self.OUTPUT: dest_id}
-    
-        # Collect all geometries and apply unary_union
+        
+        # Check if the input layer has crs
+        if source.sourceCrs() is None:
+            feedback.pushInfo(self.tr('Input layer has no CRS.'))
+            return {self.OUTPUT: dest_id}
+
         geometries = [feature.geometry() for feature in source.getFeatures()]
         geometry = QgsGeometry.unaryUnion(geometries).simplify(0.0004)
+
+        # convert to WGS84 if not already
+        if source.sourceCrs() != crs:
+            feedback.pushInfo(self.tr('Input layer is not in WGS84. Converting to WGS84.'))
+            transform = QgsCoordinateTransform(source.sourceCrs(), crs, context.project())
+            geometry.transform(transform)
 
         gid10km = self.geosquare_grid.polyfill(
             geometry,
@@ -173,14 +171,13 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
             # Stop the algorithm if cancel button has been clicked
             if feedback.isCanceled():
                 break
-
             self.geosquare_grid.polyfill(
                 self.geosquare_grid.gid_to_geometry(g10km).intersection(geometry),
-                grid_size[self.parameterAsEnum(parameters, self.GRIDSIZE, context)],
+                grid_size[list(grid_size.keys())[self.parameterAsEnum(parameters, self.GRIDSIZE, context)]],
                 feedback=feedback,
                 start=g10km,
                 sink=sink,
-                inside_only=self.parameterAsBool(parameters, self.INSIDEONLY, context),
+                fullcover=self.parameterAsBool(parameters, self.INSIDEONLY, context),
             )
             # Update the progress bar
             current += total
