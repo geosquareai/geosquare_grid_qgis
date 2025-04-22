@@ -165,8 +165,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
             feedback.pushInfo(self.tr('Input layer has no CRS.'))
             return {self.OUTPUT: dest_id}
 
-        boundarygeometries = [feature.geometry() for feature in boundary.getFeatures()]
-        boundarygeometry = QgsGeometry.unaryUnion(boundarygeometries).simplify(0.0004)
+        boundarygeometry = QgsGeometry.unaryUnion([feature.geometry() for feature in boundary.getFeatures()]).simplify(0.0004)
 
         # convert to WGS84 if not already
         if boundary.sourceCrs() != crs:
@@ -190,110 +189,149 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
             source = QgsRasterLayer(reproject['OUTPUT'], 'reprojected')
 
 
-        parrentGID = self.geosquare_grid.polyfill(
-            boundarygeometry,
-            10000,
-            feedback=feedback,
-        )
-        
-        count_10km = len(parrentGID)
-        total = 100 / count_10km if count_10km else 0
-        current = 0
+        try:
+            parrentGID = self.geosquare_grid.polyfill(
+                boundarygeometry,
+                10000,
+                feedback=feedback,
+            )
+            
+            count_10km = len(parrentGID)
+            total = 100 / count_10km if count_10km else 0
+            current = 0
 
-        # clip big raster to small raster by using the boundary from parentGID and save it to temporary file with filename gid10km
-        for g10km in parrentGID:
-            # Stop the algorithm if cancel button has been clicked
-            if feedback.isCanceled():
-                break
-            # process each part
-            self.processPart(
+            # clip big raster to small raster by using the boundary from parentGID and save it to temporary file with filename gid10km
+            for g10km in parrentGID:
+                # Stop the algorithm if cancel button has been clicked
+                if feedback.isCanceled():
+                    break
+                # process each part
+                self.processPart(
+                    boundarygeometry,
+                    g10km,
+                    source,
+                    calculatetype,
+                    size,
+                    context,
+                    feedback,
+                    sink
+                )
+                # Update the progress bar
+                current += total
+                feedback.setProgress(int(current))
+            feedback.setProgress(100)
+            feedback.pushInfo(self.tr('Processing completed.'))
+            feedback.pushInfo(self.tr('Output layer created.'))
+        except Exception as e:
+            feedback.reportError(f"Error during processing: {str(e)}")
+            
+        return {self.OUTPUT: dest_id}
+    
+    def processPart(self, boundarygeometry, g10km, source, calculatetype, size, context, feedback, sink):
+        geometry = self.geosquare_grid.gid_to_geometry(g10km)
+        vl = None
+        temp_output = os.path.join(QgsProcessingUtils.tempFolder(), f'{g10km}.tif')
+        
+        try:
+            vl = QgsVectorLayer("Polygon?crs=EPSG:4326", f"temp_{g10km}", "memory")
+            pr = vl.dataProvider()
+            f = QgsFeature()
+            f.setGeometry(geometry)
+            pr.addFeature(f)
+            vl.updateExtents()
+
+            clipped_result = processing.run(
+                'gdal:cliprasterbymasklayer',
+                {
+                    'INPUT': source.source(),
+                    'MASK': vl,
+                    'SOURCE_CRS': source.crs().authid(),
+                    'TARGET_CRS': 'EPSG:4326',
+                    'NODATA': None,
+                    'ALPHA_BAND': False,
+                    'CROP_TO_CUTLINE': True,
+                    'KEEP_RESOLUTION': True,
+                    'SET_RESOLUTION': False,
+                    'OUTPUT': temp_output
+                },
+                context=context,
+                is_child_algorithm=True
+            )
+            
+            # process per part
+            self.process_zonal_statistics(
+                boundarygeometry,
                 g10km,
-                source,
+                clipped_result['OUTPUT'],
                 calculatetype,
                 size,
                 context,
                 feedback,
                 sink
             )
-            # Update the progress bar
-            current += total
-            feedback.setProgress(int(current))
-        feedback.setProgress(100)
-        feedback.pushInfo(self.tr('Processing completed.'))
-        feedback.pushInfo(self.tr('Output layer created.'))
+        except Exception as e:
+            feedback.reportError(f"Error processing part {g10km}: {str(e)}")
+        finally:
+            # Clean up resources
+            if vl is not None and vl.isValid():
+                del vl
+            
+            # Force garbage collection to release memory
+            import gc
+            gc.collect()
+            
 
-        return {self.OUTPUT: dest_id}
-    
-    def processPart(self, g10km, source, calculatetype, size, context, feedback, sink):
-        geometry = self.geosquare_grid.gid_to_geometry(g10km)
-        temp_vector = QgsVectorLayer("Polygon?crs=EPSG:4326", "temp", "memory")
-        temp_provider = temp_vector.dataProvider()
-        temp_feature = QgsFeature()
-        temp_feature.setGeometry(geometry)
-        temp_provider.addFeature(temp_feature)
-
-        clipped_result = processing.run(
-            'gdal:cliprasterbymasklayer',
-            {
-                'INPUT': source.source(),
-                'MASK': temp_vector,
-                'SOURCE_CRS': source.crs().authid(),
-                'TARGET_CRS': 'EPSG:4326',
-                'NODATA': None,
-                'ALPHA_BAND': False,
-                'CROP_TO_CUTLINE': True,
-                'KEEP_RESOLUTION': True,
-                'SET_RESOLUTION': False,
-                'OUTPUT': 'TEMPORARY_OUTPUT'
-            },
-            context=context,
-            is_child_algorithm=True
-        )
-        # process per part
-        self.process_zonal_statistics(
-            g10km,
-            clipped_result['OUTPUT'],
-            calculatetype,
-            size,
-            context,
-            feedback,
-            sink
-        )
-
-    def process_zonal_statistics(self, g10km, clipped_output, calculatetype, size, context, feedback, sink):
-        child_grids = self.geosquare_grid.parrent_to_allchildren(
-                g10km,
-                size,
-                as_feature=True,
+    def process_zonal_statistics(self, boundarygeometry, g10km, clipped_output, calculatetype, size, context, feedback, sink):
+        vl = None
+        output_layer = None
+        
+        try:
+            child_grids = self.geosquare_grid.parrent_to_allchildren(
+                    g10km,
+                    size,
+                    as_feature=True,
+                )
+            # filter out the child grids that are only intersecting with the boundary
+            child_grids = [child for child in child_grids if child.geometry().intersects(boundarygeometry)]
+            vl = QgsVectorLayer("Polygon?crs=EPSG:4326&field=gid:string(0,0)", f"temp_{g10km}_part", "memory")
+            pr = vl.dataProvider()
+            for child in child_grids:
+                pr.addFeature(child)
+            # Map calculation type to statistics number
+            stat_value = calculatetype
+            output = processing.run(
+                "native:zonalstatisticsfb",
+                {
+                    'INPUT': vl,
+                    'INPUT_RASTER': clipped_output,
+                    'RASTER_BAND': 1,
+                    'COLUMN_PREFIX': '_',
+                    'STATISTICS': [stat_value + 1],
+                    'OUTPUT': 'TEMPORARY_OUTPUT'
+                },
+                context=context,
+                is_child_algorithm=True
             )
-        calc_type = ['SUM', 'MEAN', 'MIN', 'MAX', 'MEDIAN'][calculatetype]
-        temp_vector_part = QgsVectorLayer("Polygon?crs=EPSG:4326&field=gid:string(0,0)", "temp", "memory")
-        temp_provider_part = temp_vector_part.dataProvider()
-        for child in child_grids:
-            temp_provider_part.addFeature(child)
-        # Map calculation type to statistics number
-        stat_value = calculatetype
-        output = processing.run(
-            "native:zonalstatisticsfb",
-            {
-                'INPUT': temp_vector_part,
-                'INPUT_RASTER': clipped_output,
-                'RASTER_BAND': 1,
-                'COLUMN_PREFIX': '_',
-                'STATISTICS': [stat_value + 1],
-                'OUTPUT': 'TEMPORARY_OUTPUT'
-            },
-            context=context,
-            is_child_algorithm=True
-        )
-        # Load the output using QgsProcessingUtils to handle temp files properly
-        output_layer = QgsProcessingUtils.mapLayerFromString(output['OUTPUT'], context)
-        for feature in output_layer.getFeatures():
-            # Stop the algorithm if cancel button has been clicked
-            if feedback.isCanceled():
-                break
-            # Add the new feature to the sink
-            sink.addFeature(feature, QgsFeatureSink.FastInsert)
+            # Load the output using QgsProcessingUtils to handle temp files properly
+            output_layer = QgsProcessingUtils.mapLayerFromString(output['OUTPUT'], context)
+            for feature in output_layer.getFeatures():
+                # Stop the algorithm if cancel button has been clicked
+                if feedback.isCanceled():
+                    break
+                # Add the new feature to the sink
+                sink.addFeature(feature, QgsFeatureSink.FastInsert)
+        except Exception as e:
+            feedback.reportError(f"Error in zonal statistics for {g10km}: {str(e)}")
+        finally:
+            # Clean up the temporary layers
+            if vl is not None and vl.isValid():
+                del vl
+            if output_layer is not None:
+                del output_layer
+            
+            # Force garbage collection to release memory
+            import gc
+            gc.collect()
 
 
     def name(self):
