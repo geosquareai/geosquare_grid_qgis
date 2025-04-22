@@ -12,8 +12,8 @@ email=admin@geosquare.ai
 
 about=PetainGrid is a geographic indexing and addressing system that divides the world into hierarchical grid cells. The tool provides: Hierarchical Grid System: Divides the Earth into 15 precision levels of grid cells Custom Addressing: Converts geographic coordinates into unique Grid IDs (GIDs) Human-Readable Addresses: Maps technical grid cells to natural language addresses using a grammar-based structure Bidirectional Conversion: Translates between coordinates, grid IDs, and human addresses Spatial Analysis: Includes tools for: Finding grid cells that overlap with any geometry Creating grid networks within bounding boxes Calculating geometric relationships between cells PetainGrid enables precise location referencing without using traditional coordinate systems, making geographic positions more accessible through structured, human-readable addresses while maintaining technical precision.
 
-tracker=http://bugs
-repository=http://repo
+tracker=https://github.com/petainid/geosquare_grid_qgis
+repository=https://github.com/petainid/geosquare_grid_qgis
 # End of mandatory metadata
 
 # Recommended items:
@@ -25,7 +25,7 @@ hasProcessingProvider=yes
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=http://homepage
+homepage=https://geosquare.ai
 category=Vector
 icon=icon.png
 # experimental flag

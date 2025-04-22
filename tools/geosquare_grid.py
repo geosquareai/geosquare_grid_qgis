@@ -1,6 +1,7 @@
 import functools
 from typing import Tuple, List,Union
-from qgis.core import QgsGeometry, QgsFeatureSink, QgsFeature, QgsProcessingFeedback
+from qgis.core import QgsGeometry, QgsFeatureSink, QgsFeature, QgsProcessingFeedback, QgsFields, QgsField
+from PyQt5.QtCore import QVariant
 
 
 class GeosquareGrid:
@@ -233,6 +234,49 @@ class GeosquareGrid:
         return gid_part
 
     # === Spatial operations ===
+
+    def parrent_to_allchildren(self, key: str, size: int, geometry: QgsGeometry = None, as_feature: bool = False) -> List[str]:
+        """Get all children or parent GIDs for a given GID"""
+        resolution = self.size_level[size]
+        fields = QgsFields()
+        fields.append(QgsField('gid', QVariant.String))
+        parrent_resolution = len(key) - resolution
+        if resolution < parrent_resolution:
+            raise ValueError("resolution must be less than or equal to the length of the GID")
+        if resolution == parrent_resolution:
+            return [key]
+        keys = []
+        queue = [key]
+        while queue:
+            current_key = queue.pop(0)
+            if len(current_key) == resolution:
+                if geometry is not None:
+                    if self._area_ratio(self.gid_to_geometry(current_key), geometry) > 0:
+                        if as_feature:
+                            geom = self.gid_to_geometry(current_key)
+                            feature = QgsFeature(fields)
+                            feature.setGeometry(geom)
+                            feature.setAttribute("gid", current_key)
+                            keys.append(feature)
+                        else:
+                            keys.append(current_key)
+                else:
+                    if as_feature:
+                        geom = self.gid_to_geometry(current_key)
+                        feature = QgsFeature(fields)
+                        feature.setGeometry(geom)
+                        feature.setAttribute("gid", current_key)
+                        keys.append(feature)
+                    else:
+                        keys.append(current_key)
+            elif len(current_key) > resolution:
+                break
+            else:
+                for child_key in self._to_children(current_key):
+                    queue.append(child_key)
+
+        return keys
+
     
     def _to_children(self, key: str) -> Tuple[str, ...]:
         """Get all child GIDs for a given GID"""

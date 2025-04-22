@@ -46,15 +46,19 @@ from qgis.core import (QgsProcessing,
                        QgsProcessingParameterFeatureSource,
                        QgsProcessingParameterFeatureSink,
                        QgsProcessingParameterBoolean,
-                       QgsProcessingParameterEnum)
+                       QgsProcessingParameterEnum,
+                       QgsProcessingParameterRasterLayer,
+                       QgsRasterLayer,
+                       QgsProcessingUtils)
 from .geosquare_grid import GeosquareGrid
 from qgis.core import QgsField, QgsFields, QgsCoordinateReferenceSystem, QgsWkbTypes, QgsCoordinateTransform
 from PyQt5.QtCore import QVariant
 from qgis import processing
 from qgis.core import QgsGeometry, QgsFeature, QgsVectorLayer
+import os
 
 
-class PolyfillAlgorithm(QgsProcessingAlgorithm):
+class FromRasterAlgorithm(QgsProcessingAlgorithm):
     """
     This is an example algorithm that takes a vector layer and
     creates a new identical one.
@@ -74,7 +78,8 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
     geosquare_grid = GeosquareGrid()
     OUTPUT = 'OUTPUT'
     INPUT = 'INPUT'
-    FULLCOVER = 'FULLCOVER'
+    BOUNDARY = 'BOUNDARY'
+    CALCULATETYPE = 'CALCULATETYPE'
     GRIDSIZE = 'GRIDSIZE'
 
     def initAlgorithm(self, config):
@@ -86,10 +91,18 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         # We add the input vector features source. It can have any kind of
         # geometry.
         self.addParameter(
+            QgsProcessingParameterRasterLayer(
+                self.INPUT,
+                self.tr('Input raster layer'),
+                [QgsProcessing.TypeRaster]
+            )
+        )
+
+        self.addParameter(
             QgsProcessingParameterFeatureSource(
-            self.INPUT,
-            self.tr('Input layer'),
-            [QgsProcessing.TypeVectorPolygon]
+                self.BOUNDARY,
+                self.tr('Boundary layer'),
+                [QgsProcessing.TypeVectorPolygon]
             )
         )
 
@@ -106,11 +119,13 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         # We add a boolean parameter to determine if we want to only
         # include features that are inside the polygon
         self.addParameter(
-            QgsProcessingParameterBoolean(
-                self.FULLCOVER,
-                self.tr('Full cover area'),
-                defaultValue=True,
-                optional=True
+            QgsProcessingParameterEnum(
+                self.CALCULATETYPE,
+                self.tr('Calculate type'),
+                options=['Sum', 'Mean', 'Median', 'St Dev', 'Min', 'Max'],
+                defaultValue='Median',
+                allowMultiple=False,
+                optional=False
             )
         )
 
@@ -133,58 +148,153 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         """
         fields = QgsFields()
         fields.append(QgsField('gid', QVariant.String))
+        fields.append(QgsField('value', QVariant.Double))
+        
         # Create a CRS using EPSG:4326 (WGS84)
         crs = QgsCoordinateReferenceSystem('EPSG:4326')
         
-        source = self.parameterAsSource(parameters, self.INPUT, context)
+        source = self.parameterAsRasterLayer(parameters, self.INPUT, context)
+        boundary = self.parameterAsSource(parameters, self.BOUNDARY, context)
+        calculatetype = self.parameterAsEnum(parameters, self.CALCULATETYPE, context)
+        size = grid_size[list(grid_size.keys())[self.parameterAsEnum(parameters, self.GRIDSIZE, context)]]
         (sink, dest_id) = self.parameterAsSink(parameters, self.OUTPUT,
             context, fields, QgsWkbTypes.Polygon, crs)
         
-        # Check if the input layer is empty
-        if source.featureCount() == 0:
-            feedback.pushInfo(self.tr('Input layer is empty.'))
-            return {self.OUTPUT: dest_id}
-        
         # Check if the input layer has crs
-        if source.sourceCrs() is None:
+        if source.crs() is None:
             feedback.pushInfo(self.tr('Input layer has no CRS.'))
             return {self.OUTPUT: dest_id}
 
-        geometries = [feature.geometry() for feature in source.getFeatures()]
-        geometry = QgsGeometry.unaryUnion(geometries).simplify(0.0004)
+        boundarygeometries = [feature.geometry() for feature in boundary.getFeatures()]
+        boundarygeometry = QgsGeometry.unaryUnion(boundarygeometries).simplify(0.0004)
 
         # convert to WGS84 if not already
-        if source.sourceCrs() != crs:
+        if boundary.sourceCrs() != crs:
             feedback.pushInfo(self.tr('Input layer is not in WGS84. Converting to WGS84.'))
-            transform = QgsCoordinateTransform(source.sourceCrs(), crs, context.project())
-            geometry.transform(transform)
+            transform = QgsCoordinateTransform(boundary.sourceCrs(), crs, context.project())
+            boundarygeometry.transform(transform)
 
-        gid10km = self.geosquare_grid.polyfill(
-            geometry,
+        #  convert raster source to WGS84 if not already
+        if source.crs() != crs:
+            feedback.pushInfo(self.tr('Input layer is not in WGS84. Converting to WGS84.'))
+            reproject = processing.run(
+                'gdal:warpreproject',
+                {
+                    'INPUT': source.source(),
+                    'TARGET_CRS': crs,
+                    'OUTPUT': 'TEMPORARY_OUTPUT'
+                },
+                context=context,
+                feedback=feedback,
+            )
+            source = QgsRasterLayer(reproject['OUTPUT'], 'reprojected')
+
+
+        parrentGID = self.geosquare_grid.polyfill(
+            boundarygeometry,
             10000,
             feedback=feedback,
         )
-        count_10km = len(gid10km)
+        
+        count_10km = len(parrentGID)
         total = 100 / count_10km if count_10km else 0
         current = 0
-        for g10km in gid10km:
+
+        # clip big raster to small raster by using the boundary from parentGID and save it to temporary file with filename gid10km
+        for g10km in parrentGID:
             # Stop the algorithm if cancel button has been clicked
             if feedback.isCanceled():
                 break
-            self.geosquare_grid.polyfill(
-                self.geosquare_grid.gid_to_geometry(g10km).intersection(geometry),
-                grid_size[list(grid_size.keys())[self.parameterAsEnum(parameters, self.GRIDSIZE, context)]],
-                feedback=feedback,
-                start=g10km,
-                sink=sink,
-                fullcover=self.parameterAsBool(parameters, self.FULLCOVER, context),
+            # process each part
+            self.processPart(
+                g10km,
+                source,
+                calculatetype,
+                size,
+                context,
+                feedback,
+                sink
             )
             # Update the progress bar
             current += total
             feedback.setProgress(int(current))
         feedback.setProgress(100)
+        feedback.pushInfo(self.tr('Processing completed.'))
+        feedback.pushInfo(self.tr('Output layer created.'))
 
         return {self.OUTPUT: dest_id}
+    
+    def processPart(self, g10km, source, calculatetype, size, context, feedback, sink):
+        geometry = self.geosquare_grid.gid_to_geometry(g10km)
+        temp_vector = QgsVectorLayer("Polygon?crs=EPSG:4326", "temp", "memory")
+        temp_provider = temp_vector.dataProvider()
+        temp_feature = QgsFeature()
+        temp_feature.setGeometry(geometry)
+        temp_provider.addFeature(temp_feature)
+
+        clipped_result = processing.run(
+            'gdal:cliprasterbymasklayer',
+            {
+                'INPUT': source.source(),
+                'MASK': temp_vector,
+                'SOURCE_CRS': source.crs().authid(),
+                'TARGET_CRS': 'EPSG:4326',
+                'NODATA': None,
+                'ALPHA_BAND': False,
+                'CROP_TO_CUTLINE': True,
+                'KEEP_RESOLUTION': True,
+                'SET_RESOLUTION': False,
+                'OUTPUT': 'TEMPORARY_OUTPUT'
+            },
+            context=context,
+            is_child_algorithm=True
+        )
+        # process per part
+        self.process_zonal_statistics(
+            g10km,
+            clipped_result['OUTPUT'],
+            calculatetype,
+            size,
+            context,
+            feedback,
+            sink
+        )
+
+    def process_zonal_statistics(self, g10km, clipped_output, calculatetype, size, context, feedback, sink):
+        child_grids = self.geosquare_grid.parrent_to_allchildren(
+                g10km,
+                size,
+                as_feature=True,
+            )
+        calc_type = ['SUM', 'MEAN', 'MIN', 'MAX', 'MEDIAN'][calculatetype]
+        temp_vector_part = QgsVectorLayer("Polygon?crs=EPSG:4326&field=gid:string(0,0)", "temp", "memory")
+        temp_provider_part = temp_vector_part.dataProvider()
+        for child in child_grids:
+            temp_provider_part.addFeature(child)
+        # Map calculation type to statistics number
+        stat_value = calculatetype
+        output = processing.run(
+            "native:zonalstatisticsfb",
+            {
+                'INPUT': temp_vector_part,
+                'INPUT_RASTER': clipped_output,
+                'RASTER_BAND': 1,
+                'COLUMN_PREFIX': '_',
+                'STATISTICS': [stat_value + 1],
+                'OUTPUT': 'TEMPORARY_OUTPUT'
+            },
+            context=context,
+            is_child_algorithm=True
+        )
+        # Load the output using QgsProcessingUtils to handle temp files properly
+        output_layer = QgsProcessingUtils.mapLayerFromString(output['OUTPUT'], context)
+        for feature in output_layer.getFeatures():
+            # Stop the algorithm if cancel button has been clicked
+            if feedback.isCanceled():
+                break
+            # Add the new feature to the sink
+            sink.addFeature(feature, QgsFeatureSink.FastInsert)
+
 
     def name(self):
         """
@@ -194,7 +304,7 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'geosquare grid - polyfill'
+        return 'geosquare grid - from raster'
 
     def displayName(self):
         """
@@ -224,4 +334,4 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         return QCoreApplication.translate('Processing', string)
 
     def createInstance(self):
-        return PolyfillAlgorithm()
+        return FromRasterAlgorithm()
