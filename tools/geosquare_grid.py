@@ -236,7 +236,7 @@ class GeosquareGrid:
     # === Spatial operations ===
 
     def parrent_to_allchildren(self, key: str, size: int, geometry: QgsGeometry = None, as_feature: bool = False) -> List[str]:
-        """Get all children or parent GIDs for a given GID"""
+        """Get all children or parent  GIDs for a given GID"""
         resolution = self.size_level[size]
         fields = QgsFields()
         fields.append(QgsField('gid', QVariant.String))
@@ -293,6 +293,7 @@ class GeosquareGrid:
         resolution: List[int],
         feedback: QgsProcessingFeedback,
         fullcover: bool = True,
+        as_feature: bool = False,
         sink: QgsFeatureSink = None
     ) -> List[str]:
         """Find all grid cells that overlap with geometry at specified resolution"""
@@ -310,7 +311,14 @@ class GeosquareGrid:
                         feature.setAttributes([key])
                         sink.addFeature(feature, QgsFeatureSink.FastInsert)
                     else:
-                        contained_keys.append(key)
+                        if as_feature:
+                            geom = self.gid_to_geometry(key)
+                            feature = QgsFeature()
+                            feature.setGeometry(geom)
+                            feature.setAttributes([key])
+                            contained_keys.append(feature)
+                        else:
+                            contained_keys.append(key)
                 else:
                     for child_key in self._to_children(key):
                         if feedback.isCanceled():
@@ -339,7 +347,14 @@ class GeosquareGrid:
                         feature.setAttributes([key])
                         sink.addFeature(feature, QgsFeatureSink.FastInsert)
                     else:
-                        contained_keys.append(key)
+                        if as_feature:
+                            geom = self.gid_to_geometry(key)
+                            feature = QgsFeature()
+                            feature.setGeometry(geom)
+                            feature.setAttributes([key])
+                            contained_keys.append(feature)
+                        else:
+                            contained_keys.append(key)
                 elif (len(key) == resolution[1]) & (area_ratio > 0.5) & (~fullcover):
                     if sink is not None:
                         geom = self.gid_to_geometry(key)
@@ -348,7 +363,14 @@ class GeosquareGrid:
                         feature.setAttributes([key])
                         sink.addFeature(feature, QgsFeatureSink.FastInsert)
                     else:
-                        contained_keys.append(key)
+                        if as_feature:
+                            geom = self.gid_to_geometry(key)
+                            feature = QgsFeature()
+                            feature.setGeometry(geom)
+                            feature.setAttributes([key])
+                            contained_keys.append(feature)
+                        else:
+                            contained_keys.append(key)
                 elif len(key) == resolution[1]:
                     return
                 else:
@@ -367,6 +389,7 @@ class GeosquareGrid:
         feedback: QgsProcessingFeedback,
         start: str = "2", 
         fullcover: bool = True,
+        as_feature: bool = False,
         sink: QgsFeatureSink = None,
     ) -> List[str]:
         """Find all grid cells that overlap with geometry at specified size(s)"""
@@ -386,6 +409,7 @@ class GeosquareGrid:
             resolution,
             feedback,
             fullcover,
+            as_feature,
             sink
         )
 
