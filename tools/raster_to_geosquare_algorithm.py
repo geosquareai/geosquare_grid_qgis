@@ -49,6 +49,7 @@ from qgis.core import (QgsProcessing,
                        QgsProcessingParameterEnum,
                        QgsProcessingParameterRasterLayer,
                        QgsRasterLayer,
+                       QgsProcessingParameterNumber,
                        QgsProcessingUtils)
 from .geosquare_grid import GeosquareGrid
 from qgis.core import QgsField, QgsFields, QgsCoordinateReferenceSystem, QgsWkbTypes, QgsCoordinateTransform
@@ -81,6 +82,34 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
     BOUNDARY = 'BOUNDARY'
     CALCULATETYPE = 'CALCULATETYPE'
     GRIDSIZE = 'GRIDSIZE'
+    BAND = 'BAND'
+
+    def prepareAlgorithm(self, parameters, context, feedback):
+        """
+        This method is called before the algorithm is executed.
+        It allows you to dynamically adjust parameters based on user input.
+        """
+        # Get the selected raster layer
+        raster_layer = self.parameterAsRasterLayer(parameters, self.INPUT, context)
+        if raster_layer is not None:
+            # Get the number of bands in the raster
+            band_count = raster_layer.bandCount()
+            if band_count > 0:
+                # Update the BAND parameter to reflect the available bands
+                self.parameterDefinition(self.BAND).setMetadata({
+                    'widget_wrapper': {
+                        'min': 1,
+                        'max': band_count,
+                        'step': 1
+                    }
+                })
+                feedback.pushInfo(self.tr(f"Raster has {band_count} bands. Band selector updated."))
+            else:
+                feedback.reportError(self.tr("The selected raster has no bands."))
+        else:
+            feedback.reportError(self.tr("No raster layer selected."))
+        return super().prepareAlgorithm(parameters, context, feedback)
+
 
     def initAlgorithm(self, config):
         """
@@ -98,6 +127,18 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
+        # band selector from input raster layer
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                self.BAND,
+                self.tr('Raster band'),
+                QgsProcessingParameterNumber.Integer,
+                defaultValue=1,
+                minValue=1
+            )
+        )
+
+        # We add the input vector features source. It can have any kind of
         self.addParameter(
             QgsProcessingParameterFeatureSource(
                 self.BOUNDARY,
@@ -152,6 +193,8 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
         
         # Create a CRS using EPSG:4326 (WGS84)
         crs = QgsCoordinateReferenceSystem('EPSG:4326')
+        band = self.parameterAsInt(parameters, self.BAND, context)
+        feedback.pushInfo(self.tr(f'Using raster band: {band}'))
         
         source = self.parameterAsRasterLayer(parameters, self.INPUT, context)
         boundary = self.parameterAsSource(parameters, self.BOUNDARY, context)
@@ -209,6 +252,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
                 self.processPart(
                     boundarygeometry,
                     g10km,
+                    band,
                     source,
                     calculatetype,
                     size,
@@ -218,7 +262,9 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
                 )
                 # Update the progress bar
                 current += total
+                sink.flushBuffer()
                 feedback.setProgress(int(current))
+                
             feedback.setProgress(100)
             feedback.pushInfo(self.tr('Processing completed.'))
             feedback.pushInfo(self.tr('Output layer created.'))
@@ -227,7 +273,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
             
         return {self.OUTPUT: dest_id}
     
-    def processPart(self, boundarygeometry, g10km, source, calculatetype, size, context, feedback, sink):
+    def processPart(self, boundarygeometry, g10km, band, source, calculatetype, size, context, feedback, sink):
         geometry = self.geosquare_grid.gid_to_geometry(g10km)
         vl = None
         temp_output = os.path.join(QgsProcessingUtils.tempFolder(), f'{g10km}.tif')
@@ -262,6 +308,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
             self.process_zonal_statistics(
                 boundarygeometry,
                 g10km,
+                band, 
                 clipped_result['OUTPUT'],
                 calculatetype,
                 size,
@@ -281,7 +328,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
             gc.collect()
             
 
-    def process_zonal_statistics(self, boundarygeometry, g10km, clipped_output, calculatetype, size, context, feedback, sink):
+    def process_zonal_statistics(self, boundarygeometry, g10km, band, clipped_output, calculatetype, size, context, feedback, sink):
         vl = None
         output_layer = None
         
@@ -304,7 +351,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
                 {
                     'INPUT': vl,
                     'INPUT_RASTER': clipped_output,
-                    'RASTER_BAND': 1,
+                    'RASTER_BAND': band,
                     'COLUMN_PREFIX': '_',
                     'STATISTICS': [stat_value + 1],
                     'OUTPUT': 'TEMPORARY_OUTPUT'
