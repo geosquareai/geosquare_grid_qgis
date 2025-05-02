@@ -93,7 +93,7 @@ class FromVectorAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterFeatureSource(
                 self.INPUT,
-                self.tr('Boundary layer'),
+                self.tr('Input layer'),
                 [QgsProcessing.TypeVectorPolygon]
             )
         )
