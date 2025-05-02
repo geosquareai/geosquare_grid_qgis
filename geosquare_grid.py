@@ -27,6 +27,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QFileDialog
 from .tools.raster_to_geosquare_algorithm import FromRasterAlgorithm
 from .tools.polyfill_algorithm import PolyfillAlgorithm
+from .tools.vector_to_geosquare_algorithm import FromVectorAlgorithm
 # Initialize Qt resources from file resources.py
 from .resources import *
 import os.path
@@ -173,6 +174,11 @@ class GeosquareGrid:
             text=self.tr(u'Raster to Geosquare'),
             callback=self.run_raster_to_geosquare,
             parent=self.iface.mainWindow())
+        self.add_action(
+            icon_path,
+            text=self.tr(u'Vector to Geosquare'),
+            callback=self.run_vector_to_geosquare,
+            parent=self.iface.mainWindow()) 
 
         # will be set False in run()
         self.first_start = True
@@ -213,5 +219,15 @@ class GeosquareGrid:
             'OUTPUT': 'memory:'
         })
         self.dlg.setWindowTitle(self.tr("Geosquare Grid - Raster to Geosquare"))
+
+        self.dlg.show()
+
+    def run_vector_to_geosquare(self):
+        """Run method that performs all the real work"""
+        self.dlg = createAlgorithmDialog(FromVectorAlgorithm(), {
+            'INPUT': self.iface.activeLayer(),
+            'OUTPUT': 'memory:'
+        })
+        self.dlg.setWindowTitle(self.tr("Geosquare Grid - Vector to Geosquare"))
 
         self.dlg.show()
