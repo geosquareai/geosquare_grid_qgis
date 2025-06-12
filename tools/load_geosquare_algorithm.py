@@ -187,6 +187,23 @@ class OpenGeosquareAlgorithm(QgsProcessingAlgorithm):
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
+    
+    def shortHelpString(self):
+        return self.tr("""
+            This algorithm converts tabular data (CSV or Parquet) containing geosquare GIDs into 
+            a spatial layer with polygon geometries.
+            
+            Input:
+            - A CSV or Parquet file that contains geosquare GID values but no geometries
+            - The field name containing the geosquare GID values
+            
+            Output:
+            - A polygon vector layer where each feature has geometry derived from its geosquare GID
+            - All original attributes from the input table are preserved
+            
+            Use this when you have geospatial data referenced by geosquare GIDs and need to 
+            visualize or analyze it spatially in QGIS.
+        """)
 
     def createInstance(self):
         return OpenGeosquareAlgorithm()

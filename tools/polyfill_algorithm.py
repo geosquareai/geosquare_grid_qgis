@@ -223,5 +223,29 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
 
+    def shortHelpString(self):
+        return self.tr("""Fills gaps in a Geosquare grid by generating a uniform grid of squares over a polygon.
+                            
+                            This algorithm creates a grid of squares (cells) that either completely covers the input polygon
+                            or only fills the interior of the polygon. The user can specify the grid size from predefined
+                            options (50m, 100m, 500m, 1km, 5km, or 10km), determining the resolution of the resulting grid.
+                            
+                            The algorithm offers two coverage modes:
+                            - Full coverage: Creates grid cells that intersect any part of the input polygon
+                            - Interior only: Creates grid cells that fall completely within the input polygon
+                            
+                            This is particularly useful for:
+                            - Creating uniform sampling grids for spatial analysis
+                            - Generating reference grids for data collection
+                            - Filling holes or gaps in existing Geosquare grid datasets
+                            - Creating standardized grid systems for reporting or visualization""")
+
+    def icon(self):
+        """
+        Returns the icon for the algorithm. This should be a valid path to an
+        icon file, or None if no icon is available.
+        """
+        return ':/plugins/geosquare_grid/icon.png'
+
     def createInstance(self):
         return PolyfillAlgorithm()

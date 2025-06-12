@@ -417,6 +417,21 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
+    
+    def shortHelpString(self):
+        return self.tr("""This algorithm converts raster data into a geosquare vector grid.
+        
+The algorithm:
+- Takes a raster input and converts it to vector geosquare grids
+- Calculates statistics (Sum, Mean, Median, St Dev, Min, Max) for each grid cell
+- Supports multiple grid sizes (50m, 100m, 500m, 1km, 5km, 10km)
+- Allows selection of specific raster bands for analysis
+- Uses a boundary layer to define the area of interest
+
+The output is a vector layer where each grid cell contains the calculated statistic value from the underlying raster pixels.
+
+This is useful for standardizing raster data at different resolutions or for comparative analysis across datasets.
+        """)
 
     def createInstance(self):
         return FromRasterAlgorithm()

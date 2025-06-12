@@ -271,6 +271,24 @@ class FromVectorAlgorithm(QgsProcessingAlgorithm):
 
     def tr(self, string):
         return QCoreApplication.translate('Processing', string)
+    
+    def shortHelpString(self):
+        return self.tr("""
+This algorithm converts vector polygons to geosquare grid cells.
+
+Input:
+- A polygon vector layer
+- Field(s) to copy from input polygons to output grid cells
+- Grid size (from 50m to 10km)
+
+Output:
+- A grid layer where:
+  - Each cell has a unique geosquare ID (gid)
+  - Selected attribute values from the input polygon are copied to all grid cells that fall within it
+  - Only cells that intersect with input polygons are created
+
+This is useful for converting irregular polygons to a regular grid format while preserving attribute data.
+        """)
 
     def createInstance(self):
         return FromVectorAlgorithm()
