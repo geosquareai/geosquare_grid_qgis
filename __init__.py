@@ -22,7 +22,10 @@
  ***************************************************************************/
  This script initializes the plugin, making it known to QGIS.
 """
+from qgis.utils import plugins
 
+if 'processing' not in plugins:
+        import processing
 
 # noinspection PyPep8Naming
 def classFactory(iface):  # pylint: disable=invalid-name
