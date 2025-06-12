@@ -22,9 +22,9 @@
  ***************************************************************************/
 """
 
-__author__ = 'PT Geo Innovasi Nussantara'
+__author__ = 'PT Geo Inovasi Nussantara'
 __date__ = '2025-04-17'
-__copyright__ = '(C) 2025 by PT Geo Innovasi Nussantara'
+__copyright__ = '(C) 2025 by PT Geo Inovasi Nussantara'
 
 # This will get replaced with a git SHA1 when you do a git archive
 
