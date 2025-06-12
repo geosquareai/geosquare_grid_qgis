@@ -164,24 +164,23 @@ class GeosquareGrid:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = ':/plugins/geosquare_grid/icon.png'
         self.add_action(
-            icon_path,
+            os.path.join(self.plugin_dir, 'open.png'),
             text=self.tr(u'Open Geosquare'),
             callback=self.run_open_geosquare,
             parent=self.iface.mainWindow())
         self.add_action(
-            icon_path,
+            os.path.join(self.plugin_dir, 'polyfill_.png'),
             text=self.tr(u'Polyfill'),
             callback=self.run_polyfill,
             parent=self.iface.mainWindow())
         self.add_action(
-            icon_path,
+            os.path.join(self.plugin_dir, 'raster_to_grids.png'),
             text=self.tr(u'Raster to Geosquare'),
             callback=self.run_raster_to_geosquare,
             parent=self.iface.mainWindow())
         self.add_action(
-            icon_path,
+            os.path.join(self.plugin_dir, 'vector_to_grids.png'),
             text=self.tr(u'Vector to Geosquare'),
             callback=self.run_vector_to_geosquare,
             parent=self.iface.mainWindow()) 
