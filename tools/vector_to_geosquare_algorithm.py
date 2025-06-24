@@ -243,7 +243,7 @@ class FromVectorAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'geosquare grid - from vector'
+        return 'Geosquare grid - from vector'
 
     def displayName(self):
         """

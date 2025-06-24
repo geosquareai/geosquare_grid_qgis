@@ -194,7 +194,7 @@ class PolyfillAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'geosquare grid - polyfill'
+        return 'Geosquare grid - Polyfill'
 
     def displayName(self):
         """

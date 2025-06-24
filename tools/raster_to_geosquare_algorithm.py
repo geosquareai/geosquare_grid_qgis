@@ -389,7 +389,7 @@ class FromRasterAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'geosquare grid - from raster'
+        return 'Geosquare grid - from raster'
 
     def displayName(self):
         """

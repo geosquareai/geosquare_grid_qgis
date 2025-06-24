@@ -159,7 +159,7 @@ class OpenGeosquareAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'geosquare grid - Open Geosquare Data'
+        return 'Geosquare grid - Open Geosquare Data'
 
     def displayName(self):
         """
@@ -190,8 +190,7 @@ class OpenGeosquareAlgorithm(QgsProcessingAlgorithm):
     
     def shortHelpString(self):
         return self.tr("""
-            This algorithm converts tabular data (CSV or Parquet) containing Geosquare GIDs into 
-            a spatial layer with polygon geometries.
+            This algorithm converts tabular data (CSV or Parquet) containing Geosquare GIDs into a spatial layer with polygon geometries.
             
             Input:
             - A CSV or Parquet file that contains Geosquare GID values but no geometries
